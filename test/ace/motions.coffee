@@ -144,6 +144,10 @@ test 'b', ->
   @press '17b'
   deepEqual @adaptor.position(), [1, 16]
 
+test 'w, W EOL behavior in operations', ->
+  @press '$cWdo', @esc
+  eq @adaptor.lineText(), '_.sortBy = function(obj, iterator, context) do'
+
 test '^', ->
   @press '^'
   deepEqual @adaptor.position(), [0, 0]
@@ -231,3 +235,36 @@ test 'T', ->
 
   @press '2T,'
   deepEqual @adaptor.position(), [0, 24]
+
+test 'H', ->
+  @renderer.getFirstFullyVisibleRow = -> 0
+
+  @press '3H'
+  deepEqual @adaptor.position(), [2, 4]
+  
+  @press 'H'
+  deepEqual @adaptor.position(), [0, 0]
+
+test 'M', ->
+  @renderer.getFirstFullyVisibleRow = -> 0
+  @renderer.getLastFullyVisibleRow = -> 14
+
+  @press '4M' # the 4 should have no effect
+  deepEqual @adaptor.position(), [7, 4]
+  
+  @press 'M'
+  deepEqual @adaptor.position(), [7, 4]
+  
+  # odd number of rows
+  @renderer.getLastFullyVisibleRow = -> 13
+  @press 'ddM'
+  deepEqual @adaptor.position(), [6, 2]
+
+test 'L', ->
+  @renderer.getLastFullyVisibleRow = -> 14
+
+  @press '6L'
+  deepEqual @adaptor.position(), [9, 2]
+  
+  @press 'L'
+  deepEqual @adaptor.position(), [14, 0]

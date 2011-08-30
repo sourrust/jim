@@ -99,27 +99,43 @@ map 'E', class MoveToBigWordEnd extends MoveToWordEnd
 
 map 'w', class MoveToNextWord extends Motion
   exclusive: yes
-  exec: repeatCountTimes (jim) ->
-    regex = if @bigWord then WORDRegex() else wordRegex()
-    line = jim.adaptor.lineText()
-    [row, column] = jim.adaptor.position()
-    rightOfCursor = line.substring column
+  exec: (jim) ->
+    timesLeft = @count
+    while timesLeft--
+      regex = if @bigWord then WORDRegex() else wordRegex()
+      line = jim.adaptor.lineText()
+      [row, column] = jim.adaptor.position()
+      rightOfCursor = line.substring column
 
-    thisMatch = regex.exec rightOfCursor
-    if thisMatch?.index > 0
-      # We've found the next beginning of the next match and it's not already
-      # under the cursor. Go to it
-      column += thisMatch.index
-    else if not thisMatch or not nextMatch = regex.exec rightOfCursor
-      # the next match isn't on this line, find it on the next
-      line = jim.adaptor.lineText ++row
-      nextLineMatch = regex.exec line
-      column = nextLineMatch?.index or 0
-    else
-      # we're on top of part of a WORD, go to the next one
-      column += nextMatch.index
+      thisMatch = regex.exec rightOfCursor
+      if not thisMatch or not nextMatch = regex.exec rightOfCursor
+        # the next match isn't on this line, find it on the next
 
-    jim.adaptor.moveTo row, column
+        if timesLeft is 0 and @operation
+          # one exception: e.g. `dw` on the last word of a line just deletes the rest
+          # of the word (instead of deleting to the start of the word on the next line)
+          column = line.length
+        else
+          line = jim.adaptor.lineText ++row
+          nextLineMatch = regex.exec line
+          column = nextLineMatch?.index or 0
+      else if timesLeft is 0 and @operation?.switchToMode is 'insert'
+        # this motion is part of a Change operation, this accounts for the exception
+        # that `cw` behaves like `ce` instead of `dwi`
+        lastMotion = new MoveToWordEnd()
+        lastMotion.bigWord = @bigWord
+        lastMotion.exec jim
+        @exclusive = no
+        return
+      else if thisMatch?.index > 0
+        # We've found the beginning of the next match and it's not already
+        # under the cursor. Go to it
+        column += thisMatch.index
+      else
+        # we're on top of part of a WORD, go to the next one
+        column += nextMatch.index
+
+      jim.adaptor.moveTo row, column
 
 map 'W', class MoveToNextBigWord extends MoveToNextWord
   bigWord: yes
@@ -186,21 +202,21 @@ map 'H', class extends Motion
   linewise: yes
   exec: (jim) ->
     line = jim.adaptor.firstFullyVisibleRow() + @count
-    literalMotions['G'].move jim, line
+    new GoToLineOrEnd(line).exec jim
 
 map 'M', class extends Motion
   linewise: yes
   exec: (jim) ->
     topRow = jim.adaptor.firstFullyVisibleRow()
     lines = jim.adaptor.lastFullyVisibleRow() - topRow
-    linesFromTop = lines / 2
-    literalMotions['G'].move jim, topRow + 1 + linesFromTop
+    linesFromTop = Math.floor(lines / 2)
+    new GoToLineOrEnd(topRow + 1 + linesFromTop).exec jim
 
 map 'L', class extends Motion
   linewise: yes
   exec: (jim) ->
     line = jim.adaptor.lastFullyVisibleRow() + 2 - @count
-    literalMotions['G'].move jim, line
+    new GoToLineOrEnd(line).exec jim
 
 map '/', class extends Motion
   exclusive: yes
