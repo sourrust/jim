@@ -7,6 +7,8 @@ Keymap     = require './keymap'
 {GoToLine} = require './motions'
 
 class Jim
+  @VERSION: '0.2.0-pre'
+
   constructor: (@adaptor) ->
     @command = null
     @registers = {}
@@ -27,18 +29,25 @@ class Jim
     else
       @mode = modeState or {}
       @mode.name = modeName
+      
+    @adaptor.onModeChange? prevMode, @mode
 
     switch prevMode?.name
-      when 'insert'  then @adaptor.moveLeft()
-      when 'replace' then @adaptor.setOverwriteMode off
-    @onModeChange? prevMode
+      when 'insert'
+        @adaptor.moveLeft()
+        # so the insert "remembers" how to repeat itself
+        @lastCommand.repeatableInsert = @adaptor.lastInsert()
+      when 'replace'
+        @adaptor.setOverwriteMode off
 
+  # pressing escape blows away all the state
   onEscape: ->
     @setMode 'normal'
     @command = null
     @commandPart = '' # just in case...
     @adaptor.clearSelection()
 
+  # when a key is pressed let the current mode figure out what to do about it
   onKeypress: (keys) -> @modes[@mode.name].onKeypress.call this, keys
 
   # delete the selected text, putting it in the default register

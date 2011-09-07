@@ -1,16 +1,29 @@
+# Key handling for each of Jim's modes
+#
+# Each mode handles key presses a bit differently.  For instance, typing an operator in
+# visual mode immediately operates on the selected text. In normal mode Jim
+# waits for a motion to follow the operator.
+
 {MoveLeft, MoveDown} = require './motions'
 
-exports.normal = do ->
-  # tokenize the command into the @command object or nullify
-  # it if something invalid is encountered
-  #
-  # token names:
-  #    count
-  #    command
-  #    operator
-  #    motionCount
-  #    motion
-  tokenize = ->
+# shame the user in the console for not knowing their Jim commands
+invalidCommand = (type = 'command') ->
+  console.log "invalid #{type}: #{@commandPart}"
+  @onEscape()
+
+# Normal mode (a.k.a. Command mode)
+exports.normal =
+  onKeypress: (keys) ->
+    # `@commandPart` is the current part of the command that's being typed.  For an
+    # operation, the operator is one "part" and the motion is another. In normal or
+    # visual mode, `@commandPart` can one of the following:
+    #   * `{count}command`
+    #   * `{count}motion`
+    #   * `{count}operator`
+    #   * chars expected to follow a command (e.g. when `r` is pressed, the next
+    #     `@commandPart` will be the char that's used as the replacement)
+    @commandPart = (@commandPart or '') + keys
+
     if not @command
       command = @keymap.commandFor @commandPart
 
@@ -18,6 +31,8 @@ exports.normal = do ->
         invalidCommand.call this
       else if command isnt true
         if command.isOperation
+          # hang onto the pending operator so that double-operators can recognized
+          # (`cc`, `yy`, etc)
           [@operatorPending] = @commandPart.match /[^\d]+$/
         @command = command
         @commandPart = ''
@@ -43,32 +58,26 @@ exports.normal = do ->
         if motion is false
           invalidCommand.call this, 'motion'
         else if motion isnt true
+          # motions need a reference to the operation they're a part of since it sometimes
+          # changes the amount of text they move over (`cw` deletes less text than `dw`)
           motion.operation = @command
+
           @command.motion = motion
           @operatorPending = null
           @commandPart = ''
 
-  invalidCommand = (type = 'command') ->
-    console.log "invalid #{type}: #{@commandPart}"
-    @onEscape()
-
-  onKeypress: (keys) ->
-    @commandPart = (@commandPart or '') + keys
-
-    tokenize.call this
-
+    # execute the command if it's complete, otherwise wait for more keys
     if @command?.isComplete()
       @command.exec this
       @lastCommand = @command if @command.isRepeatable
       @command = null
 
 
-exports.visual = do ->
-  invalidCommand = (type = 'command') ->
-    console.log "invalid #{type}: #{@commandPart}"
-    @commandPart = ''
+# visual mode
+exports.visual =
+  onKeypress: (newKeys) ->
+    @commandPart = (@commandPart or '') + newKeys
 
-  tokenize = ->
     if not @command
       command = @keymap.visualCommandFor @commandPart
 
@@ -86,29 +95,28 @@ exports.visual = do ->
         console.log "#{@command} didn't expect to be followed by \"#{@commandPart}\""
       @commandPart = ''
 
-  onKeypress: (newKeys) ->
-    @commandPart = (@commandPart or '') + newKeys
-
-    tokenize.call this
-
     wasBackwards = @adaptor.isSelectionBackwards()
 
+    # operations are always "complete" in visual mode
     if @command?.isOperation or @command?.isComplete()
       if @command.isRepeatable
+        # save the selection's "size", which will be used if the command is repeated
         @command.selectionSize = if @mode.name is 'visual' and @mode.linewise
           [minRow, maxRow] = @adaptor.selectionRowRange()
           lines: (maxRow - minRow) + 1
         else
           @adaptor.characterwiseSelectionSize()
-        @command.linewise = @mode.name is 'visual' and @mode.linewise
-        @command.visualExec this
+        @command.linewise = @mode.linewise
+
         @lastCommand = @command
-        console.log 'repeatable visual command', @lastCommand
-      else
-        @command.visualExec this
+
+      @command.visualExec this
       @command = null
 
-    if @mode.name is 'visual'
+    # if we haven't changed out of characterwise visual mode and the direction
+    # of the selection changes we have to make sure that the anchor character
+    # stays selected
+    if @mode.name is 'visual' and not @mode.linewise
       if wasBackwards
         @adaptor.adjustAnchor -1 if not @adaptor.isSelectionBackwards()
       else

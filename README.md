@@ -17,7 +17,7 @@ What works so far
 -----------------
 * modes: normal, visual (characterwise and linewise), insert, replace
 * insert switches: `i`, `a`, `o`, `O`, `I`, `A`, and `C`
-* commands: `D`, `gJ`, `J`, `p`, `P`, `r`, `s`, `x`, `X`, and `u`
+* commands: `D`, `gJ`, `J`, `p`, `P`, `r`, `s`, `x`, `X`, `u`, and `.`
 * visual mode commands: `gJ`, `J`, `p` and `P`
 * operators: `c`, `d`, `y`, `>`, and `<` in normal and visual modes (double
   operators work as linewise commands in normal mode, too)
@@ -31,11 +31,6 @@ What works so far
   * `f`, `F`, `t`, `T`
 * default register (operations yank text in the the register for pasting)
 * `u` works as it does in Vim (`Cmd-z` and `Cmd-y` still work as they do in Ace)
-
-
-Next up
--------
-* `.` command
 
 If you have a feature request [create an issue](https://github.com/misfo/jim/issues/new)
 
@@ -58,11 +53,20 @@ Then just open index.html and you're good to go.
 Chrome needs a special command line argument to allow XHRs to files:
 `google-chrome --allow-file-access-from-files`
 
-While developing, keep your CoffeeScript building in the background:
+To keep the files in `build/` building while you develop, you'll need CoffeeScript and uglify.js:
+
+```
+npm install coffee-script
+npm install uglify-js
+```
+
+
+Then build your files in the background:
 
 ```
 cake build:ace:watch
 ```
+
 
 Open test/test.html to run the tests
 

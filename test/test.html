@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
   <head>
     <link rel="stylesheet" href="../vendor/qunit.css" type="text/css" media="screen" />
@@ -30,7 +30,7 @@
         'ace/test/mockrenderer'
         'ace/undomanager'
         'pilot/dom'
-        '../build/jim-ace-uncompressed.js'
+        '../build/jim-ace.debug.js'
         'text!test/fixtures/sort_by.js'
       ], ->
         {EditSession} = require 'ace/edit_session'
@@ -60,6 +60,7 @@
           @adaptor = @jim.adaptor
           @esc = 27
           @down = 40
+          @backspace = 8
           @press = (keyGroups...) ->
             for keys in keyGroups
               switch typeof keys

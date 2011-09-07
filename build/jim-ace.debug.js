@@ -1,5 +1,5 @@
 /**
- * Jim v0.2.0pre
+ * Jim v0.2.0-pre
  * https://github.com/misfo/jim
  *
  * Copyright 2011, Trent Ogren
@@ -40,7 +40,7 @@ exports.repeatCountTimes = function(func) {
 
 require['./motions'] = (function() {
   var exports = {}, module = {};
-  var Command, GoToLine, GoToLineOrEnd, GoToNextChar, GoToPreviousChar, GoUpToNextChar, GoUpToPreviousChar, LinewiseCommandMotion, Motion, MoveBackBigWord, MoveBackWord, MoveDown, MoveLeft, MoveRight, MoveToBigWordEnd, MoveToEndOfLine, MoveToFirstNonBlank, MoveToNextBigWord, MoveToNextWord, MoveToWordEnd, MoveUp, WORDRegex, defaultMappings, lastWORDRegex, lastWordRegex, map, repeatCountTimes, wordCursorIsOn, wordRegex, _ref;
+  var Command, GoToFirstVisibleLine, GoToLastVisibleLine, GoToLine, GoToLineOrEnd, GoToMiddleLine, GoToNextChar, GoToPreviousChar, GoUpToNextChar, GoUpToPreviousChar, LinewiseCommandMotion, Motion, MoveBackBigWord, MoveBackWord, MoveDown, MoveLeft, MoveRight, MoveToBeginningOfLine, MoveToBigWordEnd, MoveToEndOfLine, MoveToFirstNonBlank, MoveToNextBigWord, MoveToNextWord, MoveToWordEnd, MoveUp, NearestWordSearch, NearestWordSearchBackwards, Search, SearchAgain, SearchAgainReverse, SearchBackwards, WORDRegex, defaultMappings, lastWORDRegex, lastWordRegex, map, repeatCountTimes, wordRegex, _ref;
 var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) {
   for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; }
   function ctor() { this.constructor = child; }
@@ -61,22 +61,6 @@ lastWordRegex = RegExp("(" + (wordRegex().source) + ")\\s*$");
 defaultMappings = {};
 map = function(keys, motionClass) {
   return defaultMappings[keys] = motionClass;
-};
-wordCursorIsOn = function(line, column) {
-  var charsAhead, leftMatch, leftOfCursor, nextWord, rightMatch, rightOfCursor;
-  leftOfCursor = line.substring(0, column);
-  rightOfCursor = line.substring(column);
-  charsAhead = null;
-  if (/\W/.test(line[column])) {
-    leftMatch = [''];
-    nextWord = /\w+/.exec(rightOfCursor);
-    rightMatch = !nextWord ? /[^\w\s]+/.exec(rightOfCursor) : nextWord;
-    charsAhead = rightMatch.index;
-  } else {
-    leftMatch = /\w*$/.exec(leftOfCursor);
-    rightMatch = /^\w*/.exec(rightOfCursor);
-  }
-  return [leftMatch[0] + rightMatch[0], charsAhead];
 };
 Motion = (function() {
   __extends(Motion, Command);
@@ -155,12 +139,18 @@ map('e', MoveToWordEnd = (function() {
     MoveToWordEnd.__super__.constructor.apply(this, arguments);
   }
   MoveToWordEnd.prototype.exec = repeatCountTimes(function(jim) {
-    var column, firstMatchOnSubsequentLine, line, nextMatch, regex, rightOfCursor, row, thisMatch, _ref2;
+    var column, firstMatchOnSubsequentLine, line, matchOnLine, regex, rightOfCursor, row, _ref2;
     regex = this.bigWord ? WORDRegex() : wordRegex();
     line = jim.adaptor.lineText();
     _ref2 = jim.adaptor.position(), row = _ref2[0], column = _ref2[1];
     rightOfCursor = line.substring(column);
-    if (column >= line.length - 1) {
+    matchOnLine = regex.exec(rightOfCursor);
+    if ((matchOnLine != null ? matchOnLine[0].length : void 0) <= 1) {
+      matchOnLine = regex.exec(rightOfCursor);
+    }
+    if (matchOnLine) {
+      column += matchOnLine[0].length + matchOnLine.index - 1;
+    } else {
       while (true) {
         line = jim.adaptor.lineText(++row);
         firstMatchOnSubsequentLine = regex.exec(line);
@@ -170,14 +160,6 @@ map('e', MoveToWordEnd = (function() {
         } else if (row === jim.adaptor.lastRow()) {
           return;
         }
-      }
-    } else {
-      thisMatch = regex.exec(rightOfCursor);
-      if (thisMatch.index > 1 || thisMatch[0].length > 1) {
-        column += thisMatch[0].length + thisMatch.index - 1;
-      } else {
-        nextMatch = regex.exec(rightOfCursor);
-        column += nextMatch.index + nextMatch[0].length - 1;
       }
     }
     return jim.adaptor.moveTo(row, column);
@@ -276,16 +258,16 @@ map('B', MoveBackBigWord = (function() {
   MoveBackBigWord.prototype.bigWord = true;
   return MoveBackBigWord;
 })());
-map('0', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('0', MoveToBeginningOfLine = (function() {
+  __extends(MoveToBeginningOfLine, Motion);
+  function MoveToBeginningOfLine() {
+    MoveToBeginningOfLine.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.exclusive = true;
-  _Class.prototype.exec = function(jim) {
+  MoveToBeginningOfLine.prototype.exclusive = true;
+  MoveToBeginningOfLine.prototype.exec = function(jim) {
     return jim.adaptor.moveTo(jim.adaptor.row(), 0);
   };
-  return _Class;
+  return MoveToBeginningOfLine;
 })());
 map('^', MoveToFirstNonBlank = (function() {
   __extends(MoveToFirstNonBlank, Motion);
@@ -342,185 +324,154 @@ map('G', GoToLineOrEnd = (function() {
   };
   return GoToLineOrEnd;
 })());
-map('H', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('H', GoToFirstVisibleLine = (function() {
+  __extends(GoToFirstVisibleLine, Motion);
+  function GoToFirstVisibleLine() {
+    GoToFirstVisibleLine.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.linewise = true;
-  _Class.prototype.exec = function(jim) {
+  GoToFirstVisibleLine.prototype.linewise = true;
+  GoToFirstVisibleLine.prototype.exec = function(jim) {
     var line;
     line = jim.adaptor.firstFullyVisibleRow() + this.count;
     return new GoToLineOrEnd(line).exec(jim);
   };
-  return _Class;
+  return GoToFirstVisibleLine;
 })());
-map('M', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('M', GoToMiddleLine = (function() {
+  __extends(GoToMiddleLine, Motion);
+  function GoToMiddleLine() {
+    GoToMiddleLine.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.linewise = true;
-  _Class.prototype.exec = function(jim) {
+  GoToMiddleLine.prototype.linewise = true;
+  GoToMiddleLine.prototype.exec = function(jim) {
     var lines, linesFromTop, topRow;
     topRow = jim.adaptor.firstFullyVisibleRow();
     lines = jim.adaptor.lastFullyVisibleRow() - topRow;
     linesFromTop = Math.floor(lines / 2);
     return new GoToLineOrEnd(topRow + 1 + linesFromTop).exec(jim);
   };
-  return _Class;
+  return GoToMiddleLine;
 })());
-map('L', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('L', GoToLastVisibleLine = (function() {
+  __extends(GoToLastVisibleLine, Motion);
+  function GoToLastVisibleLine() {
+    GoToLastVisibleLine.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.linewise = true;
-  _Class.prototype.exec = function(jim) {
+  GoToLastVisibleLine.prototype.linewise = true;
+  GoToLastVisibleLine.prototype.exec = function(jim) {
     var line;
     line = jim.adaptor.lastFullyVisibleRow() + 2 - this.count;
     return new GoToLineOrEnd(line).exec(jim);
   };
-  return _Class;
+  return GoToLastVisibleLine;
 })());
-map('/', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('/', Search = (function() {
+  __extends(Search, Motion);
+  function Search() {
+    Search.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.exclusive = true;
-  _Class.prototype.exec = function(jim) {
-    var pattern, timesLeft, _results;
-    timesLeft = this.count;
-    pattern = prompt("Find:");
-    jim.search = {
-      pattern: pattern,
-      backwards: false
-    };
+  Search.runSearch = function(jim, count, reverse) {
+    var backwards, searchString, wholeWord, _ref2, _results;
+    if (!jim.search) {
+      return;
+    }
+    _ref2 = jim.search, backwards = _ref2.backwards, searchString = _ref2.searchString, wholeWord = _ref2.wholeWord;
+    if (reverse) {
+      backwards = !backwards;
+    }
     _results = [];
-    while (timesLeft--) {
-      _results.push(jim.adaptor.findNext(pattern));
+    while (count--) {
+      _results.push(jim.adaptor.search(backwards, searchString, wholeWord));
     }
     return _results;
   };
-  return _Class;
-})());
-map('?', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
-  }
-  _Class.prototype.exclusive = true;
-  _Class.prototype.exec = function(jim) {
-    var pattern, timesLeft, _results;
-    timesLeft = this.count;
-    pattern = prompt("Find:");
-    jim.search = {
-      pattern: pattern,
-      backwards: true
+  Search.prototype.exclusive = true;
+  Search.prototype.getSearch = function() {
+    return {
+      searchString: prompt("Find:"),
+      backwards: this.backwards
     };
-    _results = [];
-    while (timesLeft--) {
-      _results.push(jim.adaptor.findPrevious(pattern));
-    }
-    return _results;
   };
-  return _Class;
+  Search.prototype.exec = function(jim) {
+    jim.search = this.getSearch(jim);
+    return Search.runSearch(jim, this.count);
+  };
+  return Search;
 })());
-map('*', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('?', SearchBackwards = (function() {
+  __extends(SearchBackwards, Search);
+  function SearchBackwards() {
+    SearchBackwards.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.exclusive = true;
-  _Class.prototype.exec = function(jim) {
-    var adaptor, charsAhead, pattern, timesLeft, wholeWord, _ref2, _results;
-    timesLeft = this.count;
-    adaptor = jim.adaptor;
-    _ref2 = wordCursorIsOn(adaptor.lineText(), adaptor.column()), pattern = _ref2[0], charsAhead = _ref2[1];
+  SearchBackwards.prototype.backwards = true;
+  return SearchBackwards;
+})());
+map('*', NearestWordSearch = (function() {
+  var wordCursorIsOn;
+  __extends(NearestWordSearch, Search);
+  function NearestWordSearch() {
+    NearestWordSearch.__super__.constructor.apply(this, arguments);
+  }
+  NearestWordSearch.prototype.getSearch = function(jim) {
+    var charsAhead, searchString, wholeWord, _ref2;
+    _ref2 = wordCursorIsOn(jim.adaptor.lineText(), jim.adaptor.column()), searchString = _ref2[0], charsAhead = _ref2[1];
     if (charsAhead) {
       new MoveRight(charsAhead).exec(jim);
     }
-    wholeWord = /^\w/.test(pattern);
-    jim.search = {
-      pattern: pattern,
-      backwards: false,
-      wholeWord: wholeWord
+    wholeWord = /^\w/.test(searchString);
+    return {
+      searchString: searchString,
+      wholeWord: wholeWord,
+      backwards: this.backwards
     };
-    _results = [];
-    while (timesLeft--) {
-      _results.push(jim.adaptor.findNext(pattern, wholeWord));
-    }
-    return _results;
   };
-  return _Class;
+  wordCursorIsOn = function(line, column) {
+    var charsAhead, leftMatch, leftOfCursor, nextWord, rightMatch, rightOfCursor;
+    leftOfCursor = line.substring(0, column);
+    rightOfCursor = line.substring(column);
+    charsAhead = null;
+    if (/\W/.test(line[column])) {
+      leftMatch = [''];
+      nextWord = /\w+/.exec(rightOfCursor);
+      rightMatch = !nextWord ? /[^\w\s]+/.exec(rightOfCursor) : nextWord;
+      charsAhead = rightMatch.index;
+    } else {
+      leftMatch = /\w*$/.exec(leftOfCursor);
+      rightMatch = /^\w*/.exec(rightOfCursor);
+    }
+    return [leftMatch[0] + rightMatch[0], charsAhead];
+  };
+  return NearestWordSearch;
 })());
-map('#', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('#', NearestWordSearchBackwards = (function() {
+  __extends(NearestWordSearchBackwards, NearestWordSearch);
+  function NearestWordSearchBackwards() {
+    NearestWordSearchBackwards.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.exclusive = true;
-  _Class.prototype.exec = function(jim) {
-    var adaptor, charsAhead, pattern, timesLeft, wholeWord, _ref2, _results;
-    timesLeft = this.count;
-    adaptor = jim.adaptor;
-    _ref2 = wordCursorIsOn(adaptor.lineText(), adaptor.column()), pattern = _ref2[0], charsAhead = _ref2[1];
-    wholeWord = /^\w/.test(pattern);
-    jim.search = {
-      pattern: pattern,
-      backwards: true,
-      wholeWord: wholeWord
-    };
-    _results = [];
-    while (timesLeft--) {
-      _results.push(jim.adaptor.findPrevious(pattern, wholeWord));
-    }
-    return _results;
-  };
-  return _Class;
+  NearestWordSearchBackwards.prototype.backwards = true;
+  return NearestWordSearchBackwards;
 })());
-map('n', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('n', SearchAgain = (function() {
+  __extends(SearchAgain, Motion);
+  function SearchAgain() {
+    SearchAgain.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.exclusive = true;
-  _Class.prototype.exec = function(jim) {
-    var func, timesLeft, _results;
-    if (!jim.search) {
-      return;
-    }
-    timesLeft = this.count;
-    func = jim.search.backwards ? 'findPrevious' : 'findNext';
-    _results = [];
-    while (timesLeft--) {
-      _results.push(jim.adaptor[func](jim.search.pattern, jim.search.wholeWord));
-    }
-    return _results;
+  SearchAgain.prototype.exclusive = true;
+  SearchAgain.prototype.exec = function(jim) {
+    return Search.runSearch(jim, this.count);
   };
-  return _Class;
+  return SearchAgain;
 })());
-map('N', (function() {
-  __extends(_Class, Motion);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('N', SearchAgainReverse = (function() {
+  __extends(SearchAgainReverse, Motion);
+  function SearchAgainReverse() {
+    SearchAgainReverse.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.exclusive = true;
-  _Class.prototype.exec = function(jim) {
-    var func, timesLeft, _results;
-    if (!jim.search) {
-      return;
-    }
-    timesLeft = this.count;
-    func = jim.search.backwards ? 'findNext' : 'findPrevious';
-    _results = [];
-    while (timesLeft--) {
-      _results.push(jim.adaptor[func](jim.search.pattern, jim.search.wholeWord));
-    }
-    return _results;
+  SearchAgainReverse.prototype.exclusive = true;
+  SearchAgainReverse.prototype.exec = function(jim) {
+    return Search.runSearch(jim, this.count, true);
   };
-  return _Class;
+  return SearchAgainReverse;
 })());
 map('f', GoToNextChar = (function() {
   __extends(GoToNextChar, Motion);
@@ -749,7 +700,7 @@ module.exports = {
 
 require['./commands'] = (function() {
   var exports = {}, module = {};
-  var Change, ChangeChar, ChangeToEndOfLine, Command, Delete, DeleteChar, DeleteToEndOfLine, GoToLine, Insert, InsertAfter, InsertAtEndOfLine, InsertBeforeFirstNonBlank, JoinLines, JoinLinesNormalizingWhitespace, ModeSwitch, MoveDown, MoveLeft, MoveRight, MoveToEndOfLine, MoveToFirstNonBlank, OpenLine, OpenLineAbove, Paste, RepeatCommand, ReplaceSwitch, Undo, VisualLinewiseSwitch, VisualSwitch, defaultMappings, map, repeatCountTimes, _ref, _ref2, _ref3;
+  var Backspace, Change, ChangeChar, ChangeToEndOfLine, Command, Delete, DeleteChar, DeleteToEndOfLine, GoToLine, Insert, InsertAfter, InsertAtEndOfLine, InsertBeforeFirstNonBlank, JoinLines, JoinLinesNormalizingWhitespace, ModeSwitch, MoveDown, MoveLeft, MoveRight, MoveToEndOfLine, MoveToFirstNonBlank, OpenLine, OpenLineAbove, Paste, PasteBefore, RepeatCommand, ReplaceChar, ReplaceSwitch, Undo, VisualLinewiseSwitch, VisualSwitch, defaultMappings, map, repeatCountTimes, _ref, _ref2, _ref3;
 var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) {
   for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; }
   function ctor() { this.constructor = child; }
@@ -1027,21 +978,21 @@ map('p', Paste = (function() {
   };
   return Paste;
 })());
-map('P', (function() {
-  __extends(_Class, Paste);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('P', PasteBefore = (function() {
+  __extends(PasteBefore, Paste);
+  function PasteBefore() {
+    PasteBefore.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.before = true;
-  return _Class;
+  PasteBefore.prototype.before = true;
+  return PasteBefore;
 })());
-map('r', (function() {
-  __extends(_Class, Command);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('r', ReplaceChar = (function() {
+  __extends(ReplaceChar, Command);
+  function ReplaceChar() {
+    ReplaceChar.__super__.constructor.apply(this, arguments);
   }
-  _Class.followedBy = /[\s\S]+/;
-  _Class.prototype.exec = function(jim) {
+  ReplaceChar.followedBy = /[\s\S]+/;
+  ReplaceChar.prototype.exec = function(jim) {
     var replacementText;
     jim.adaptor.setSelectionAnchor();
     new MoveRight(this.count).exec(jim);
@@ -1050,7 +1001,7 @@ map('r', (function() {
     jim.adaptor.insert(replacementText);
     return new MoveLeft().exec(jim);
   };
-  return _Class;
+  return ReplaceChar;
 })());
 map('.', RepeatCommand = (function() {
   __extends(RepeatCommand, Command);
@@ -1065,7 +1016,6 @@ map('.', RepeatCommand = (function() {
       return;
     }
     if (command.switchToMode === 'insert') {
-      command.repeatableInsert || (command.repeatableInsert = jim.adaptor.lastInsert());
       console.log('command.repeatableInsert', command.repeatableInsert);
       if (!command.repeatableInsert.contiguous) {
         string = command.repeatableInsert.string;
@@ -1114,15 +1064,15 @@ map('x', DeleteChar = (function() {
   };
   return DeleteChar;
 })());
-map('X', (function() {
-  __extends(_Class, Command);
-  function _Class() {
-    _Class.__super__.constructor.apply(this, arguments);
+map('X', Backspace = (function() {
+  __extends(Backspace, Command);
+  function Backspace() {
+    Backspace.__super__.constructor.apply(this, arguments);
   }
-  _Class.prototype.exec = function(jim) {
+  Backspace.prototype.exec = function(jim) {
     return new Delete(1, new MoveLeft(this.count)).exec(jim);
   };
-  return _Class;
+  return Backspace;
 })());
 module.exports = {
   defaultMappings: defaultMappings
@@ -1265,22 +1215,29 @@ module.exports = Keymap;
 
 require['./modes'] = (function() {
   var exports = {}, module = {};
-  var MoveDown, MoveLeft, _ref;
+  var MoveDown, MoveLeft, invalidCommand, _ref;
 _ref = require('./motions'), MoveLeft = _ref.MoveLeft, MoveDown = _ref.MoveDown;
-exports.normal = (function() {
-  var invalidCommand, tokenize;
-  tokenize = function() {
-    var command, motion, regex, _ref2;
+invalidCommand = function(type) {
+  if (type == null) {
+    type = 'command';
+  }
+  console.log("invalid " + type + ": " + this.commandPart);
+  return this.onEscape();
+};
+exports.normal = {
+  onKeypress: function(keys) {
+    var command, motion, regex, _ref2, _ref3;
+    this.commandPart = (this.commandPart || '') + keys;
     if (!this.command) {
       command = this.keymap.commandFor(this.commandPart);
       if (command === false) {
-        return invalidCommand.call(this);
+        invalidCommand.call(this);
       } else if (command !== true) {
         if (command.isOperation) {
           this.operatorPending = this.commandPart.match(/[^\d]+$/)[0];
         }
         this.command = command;
-        return this.commandPart = '';
+        this.commandPart = '';
       }
     } else if (this.command.constructor.followedBy) {
       if (this.command.constructor.followedBy.test(this.commandPart)) {
@@ -1288,67 +1245,46 @@ exports.normal = (function() {
       } else {
         console.log("" + this.command + " didn't expect to be followed by \"" + this.commandPart + "\"");
       }
-      return this.commandPart = '';
+      this.commandPart = '';
     } else if (this.command.isOperation) {
       if (regex = (_ref2 = this.command.motion) != null ? _ref2.constructor.followedBy : void 0) {
         if (regex.test(this.commandPart)) {
-          return this.command.motion.followedBy = this.commandPart;
+          this.command.motion.followedBy = this.commandPart;
         } else {
-          return console.log("" + this.command + " didn't expect to be followed by \"" + this.commandPart + "\"");
+          console.log("" + this.command + " didn't expect to be followed by \"" + this.commandPart + "\"");
         }
       } else {
         motion = this.keymap.motionFor(this.commandPart, this.operatorPending);
         if (motion === false) {
-          return invalidCommand.call(this, 'motion');
+          invalidCommand.call(this, 'motion');
         } else if (motion !== true) {
           motion.operation = this.command;
           this.command.motion = motion;
           this.operatorPending = null;
-          return this.commandPart = '';
+          this.commandPart = '';
         }
       }
     }
-  };
-  invalidCommand = function(type) {
-    if (type == null) {
-      type = 'command';
-    }
-    console.log("invalid " + type + ": " + this.commandPart);
-    return this.onEscape();
-  };
-  return {
-    onKeypress: function(keys) {
-      var _ref2;
-      this.commandPart = (this.commandPart || '') + keys;
-      tokenize.call(this);
-      if ((_ref2 = this.command) != null ? _ref2.isComplete() : void 0) {
-        this.command.exec(this);
-        if (this.command.isRepeatable) {
-          this.lastCommand = this.command;
-        }
-        return this.command = null;
+    if ((_ref3 = this.command) != null ? _ref3.isComplete() : void 0) {
+      this.command.exec(this);
+      if (this.command.isRepeatable) {
+        this.lastCommand = this.command;
       }
+      return this.command = null;
     }
-  };
-})();
-exports.visual = (function() {
-  var invalidCommand, tokenize;
-  invalidCommand = function(type) {
-    if (type == null) {
-      type = 'command';
-    }
-    console.log("invalid " + type + ": " + this.commandPart);
-    return this.commandPart = '';
-  };
-  tokenize = function() {
-    var command;
+  }
+};
+exports.visual = {
+  onKeypress: function(newKeys) {
+    var command, maxRow, minRow, wasBackwards, _ref2, _ref3, _ref4;
+    this.commandPart = (this.commandPart || '') + newKeys;
     if (!this.command) {
       command = this.keymap.visualCommandFor(this.commandPart);
       if (command === false) {
-        return invalidCommand.call(this);
+        invalidCommand.call(this);
       } else if (command !== true) {
         this.command = command;
-        return this.commandPart = '';
+        this.commandPart = '';
       }
     } else if (this.command.constructor.followedBy) {
       if (this.command.constructor.followedBy.test(this.commandPart)) {
@@ -1356,43 +1292,33 @@ exports.visual = (function() {
       } else {
         console.log("" + this.command + " didn't expect to be followed by \"" + this.commandPart + "\"");
       }
-      return this.commandPart = '';
+      this.commandPart = '';
     }
-  };
-  return {
-    onKeypress: function(newKeys) {
-      var maxRow, minRow, wasBackwards, _ref2, _ref3, _ref4;
-      this.commandPart = (this.commandPart || '') + newKeys;
-      tokenize.call(this);
-      wasBackwards = this.adaptor.isSelectionBackwards();
-      if (((_ref2 = this.command) != null ? _ref2.isOperation : void 0) || ((_ref3 = this.command) != null ? _ref3.isComplete() : void 0)) {
-        if (this.command.isRepeatable) {
-          this.command.selectionSize = this.mode.name === 'visual' && this.mode.linewise ? ((_ref4 = this.adaptor.selectionRowRange(), minRow = _ref4[0], maxRow = _ref4[1], _ref4), {
-            lines: (maxRow - minRow) + 1
-          }) : this.adaptor.characterwiseSelectionSize();
-          this.command.linewise = this.mode.name === 'visual' && this.mode.linewise;
-          this.command.visualExec(this);
-          this.lastCommand = this.command;
-          console.log('repeatable visual command', this.lastCommand);
-        } else {
-          this.command.visualExec(this);
-        }
-        this.command = null;
+    wasBackwards = this.adaptor.isSelectionBackwards();
+    if (((_ref2 = this.command) != null ? _ref2.isOperation : void 0) || ((_ref3 = this.command) != null ? _ref3.isComplete() : void 0)) {
+      if (this.command.isRepeatable) {
+        this.command.selectionSize = this.mode.name === 'visual' && this.mode.linewise ? ((_ref4 = this.adaptor.selectionRowRange(), minRow = _ref4[0], maxRow = _ref4[1], _ref4), {
+          lines: (maxRow - minRow) + 1
+        }) : this.adaptor.characterwiseSelectionSize();
+        this.command.linewise = this.mode.linewise;
+        this.lastCommand = this.command;
       }
-      if (this.mode.name === 'visual') {
-        if (wasBackwards) {
-          if (!this.adaptor.isSelectionBackwards()) {
-            return this.adaptor.adjustAnchor(-1);
-          }
-        } else {
-          if (this.adaptor.isSelectionBackwards()) {
-            return this.adaptor.adjustAnchor(1);
-          }
+      this.command.visualExec(this);
+      this.command = null;
+    }
+    if (this.mode.name === 'visual' && !this.mode.linewise) {
+      if (wasBackwards) {
+        if (!this.adaptor.isSelectionBackwards()) {
+          return this.adaptor.adjustAnchor(-1);
+        }
+      } else {
+        if (this.adaptor.isSelectionBackwards()) {
+          return this.adaptor.adjustAnchor(1);
         }
       }
     }
-  };
-})();
+  }
+};
 exports.insert = {
   onKeypress: function() {
     return true;
@@ -1413,6 +1339,7 @@ var __hasProp = Object.prototype.hasOwnProperty;
 Keymap = require('./keymap');
 GoToLine = require('./motions').GoToLine;
 Jim = (function() {
+  Jim.VERSION = '0.2.0-pre';
   function Jim(adaptor) {
     this.adaptor = adaptor;
     this.command = null;
@@ -1422,7 +1349,7 @@ Jim = (function() {
   }
   Jim.prototype.modes = require('./modes');
   Jim.prototype.setMode = function(modeName, modeState) {
-    var key, prevMode, value;
+    var key, prevMode, value, _base;
     if (this.debugMode) {
       console.log('setMode', modeName, modeState);
     }
@@ -1440,14 +1367,16 @@ Jim = (function() {
       this.mode = modeState || {};
       this.mode.name = modeName;
     }
+    if (typeof (_base = this.adaptor).onModeChange === "function") {
+      _base.onModeChange(prevMode, this.mode);
+    }
     switch (prevMode != null ? prevMode.name : void 0) {
       case 'insert':
         this.adaptor.moveLeft();
-        break;
+        return this.lastCommand.repeatableInsert = this.adaptor.lastInsert();
       case 'replace':
-        this.adaptor.setOverwriteMode(false);
+        return this.adaptor.setOverwriteMode(false);
     }
-    return typeof this.onModeChange === "function" ? this.onModeChange(prevMode) : void 0;
   };
   Jim.prototype.onEscape = function() {
     this.setMode('normal');
@@ -1497,6 +1426,30 @@ Adaptor = (function() {
   };
   beyondLineEnd = function(editor) {
     return atLineEnd(editor, true);
+  };
+  Adaptor.prototype.onModeChange = function(prevMode, newMode) {
+    var mode, _i, _len, _ref;
+    _ref = ['insert', 'normal', 'visual'];
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      mode = _ref[_i];
+      this.editor[mode === newMode.name ? 'setStyle' : 'unsetStyle']("jim-" + mode + "-mode");
+    }
+    this.editor[newMode.name === 'visual' && newMode.linewise ? 'setStyle' : 'unsetStyle']('jim-visual-linewise-mode');
+    if (newMode.name === 'insert') {
+      this.markUndoPoint('jim:insert:start');
+    } else if ((prevMode != null ? prevMode.name : void 0) === 'insert') {
+      this.markUndoPoint('jim:insert:end');
+    }
+    if (newMode.name === 'replace') {
+      return this.markUndoPoint('jim:replace:start');
+    } else if ((prevMode != null ? prevMode.name : void 0) === 'replace') {
+      return this.markUndoPoint('jim:replace:end');
+    }
+  };
+  Adaptor.prototype.markUndoPoint = function(markName) {
+    return this.editor.session.getUndoManager().execute({
+      args: [markName, this.editor.session]
+    });
   };
   Adaptor.prototype.setOverwriteMode = function(active) {
     return this.editor.setOverwrite(active);
@@ -1614,30 +1567,20 @@ Adaptor = (function() {
   Adaptor.prototype.navigateLineStart = function() {
     return this.editor.navigateLineStart();
   };
-  Adaptor.prototype.findNext = function(pattern, wholeWord) {
+  Adaptor.prototype.search = function(backwards, needle, wholeWord) {
     var range;
     this.editor.$search.set({
-      needle: pattern,
-      backwards: false,
-      wholeWord: !!wholeWord
+      backwards: backwards,
+      needle: needle,
+      wholeWord: wholeWord
     });
-    this.editor.selection.moveCursorRight();
-    range = this.editor.$search.find(this.editor.session);
-    if (range) {
-      return this.moveTo(range.start.row, range.start.column);
-    } else {
-      return this.editor.selection.moveCursorLeft();
+    if (!backwards) {
+      this.editor.selection.moveCursorRight();
     }
-  };
-  Adaptor.prototype.findPrevious = function(pattern) {
-    var range;
-    this.editor.$search.set({
-      needle: pattern,
-      backwards: true
-    });
-    range = this.editor.$search.find(this.editor.session);
-    if (range) {
+    if (range = this.editor.$search.find(this.editor.session)) {
       return this.moveTo(range.start.row, range.start.column);
+    } else if (!backwards) {
+      return this.editor.selection.moveCursorLeft();
     }
   };
   Adaptor.prototype.deleteSelection = function() {
@@ -1731,11 +1674,6 @@ JimUndoManager = (function() {
   JimUndoManager.prototype.lastOnUndoStack = function() {
     return this.$undoStack[this.$undoStack.length - 1];
   };
-  JimUndoManager.prototype.markUndoPoint = function(doc, markName) {
-    return this.execute({
-      args: [markName, doc]
-    });
-  };
   JimUndoManager.prototype.silentUndo = function() {
     var deltas;
     deltas = this.$undoStack.pop();
@@ -1776,18 +1714,35 @@ JimUndoManager = (function() {
     }
   };
   JimUndoManager.prototype.lastInsert = function() {
-    var delta, i, isContiguousInsert, item, j, k, startPosition, stringParts, _ref, _ref2, _ref3;
+    var action, cursorPosInsert, cursorPosRemove, delta, i, isContiguous, j, k, removedParts, stringParts, text, _i, _len, _ref, _ref2, _ref3, _ref4, _ref5;
     if (this.lastOnUndoStack() !== 'jim:insert:end') {
       return '';
     }
-    startPosition = null;
+    cursorPosInsert = null;
+    cursorPosRemove = null;
+    action = null;
     stringParts = [];
-    isContiguousInsert = function(delta) {
-      var _ref;
-      if (delta.action !== 'insertText') {
+    removedParts = [];
+    isContiguous = function(delta) {
+      var _ref, _ref2;
+      if (!/(insert|remove)/.test(delta.action)) {
         return false;
       }
-      return !startPosition || (_ref = delta.range).isEnd.apply(_ref, startPosition);
+      if (!action || action === delta.action) {
+        if (delta.action === 'insertText') {
+          return !cursorPosInsert || (_ref = delta.range).isEnd.apply(_ref, cursorPosInsert);
+        } else {
+          return !cursorPosRemove || (_ref2 = delta.range).isStart.apply(_ref2, cursorPosRemove);
+        }
+      } else {
+        if (delta.action === 'insertText' && (cursorPosInsert != null)) {
+          return delta.range.end.row === cursorPosInsert[0];
+        } else if (delta.action === 'removeText' && (cursorPosRemove != null)) {
+          return delta.range.end.row === cursorPosRemove[0];
+        } else {
+          return true;
+        }
+      }
     };
     for (i = _ref = this.$undoStack.length - 2; _ref <= 0 ? i <= 0 : i >= 0; _ref <= 0 ? i++ : i--) {
       if (typeof this.$undoStack[i] === 'string') {
@@ -1795,16 +1750,26 @@ JimUndoManager = (function() {
       }
       for (j = _ref2 = this.$undoStack[i].length - 1; _ref2 <= 0 ? j <= 0 : j >= 0; _ref2 <= 0 ? j++ : j--) {
         for (k = _ref3 = this.$undoStack[i][j].deltas.length - 1; _ref3 <= 0 ? k <= 0 : k >= 0; _ref3 <= 0 ? k++ : k--) {
-          item = this.$undoStack[i][j];
-          delta = item.deltas[k];
-          if (item === 'jim:insert:start' || item === 'jim:insert:afterSwitch') {
-            return {
-              string: stringParts.join(''),
-              contiguous: true
-            };
-          } else if (isContiguousInsert(delta)) {
-            stringParts.unshift(delta.text);
-            startPosition = [delta.range.start.row, delta.range.start.column];
+          delta = this.$undoStack[i][j].deltas[k];
+          if (isContiguous(delta)) {
+            action = delta.action;
+            if (action === 'removeText') {
+              cursorPosRemove = [delta.range.end.row, delta.range.end.column];
+              _ref4 = delta.text.split('');
+              for (_i = 0, _len = _ref4.length; _i < _len; _i++) {
+                text = _ref4[_i];
+                removedParts.push(text);
+              }
+            }
+            if (action === 'insertText') {
+              cursorPosInsert = [delta.range.start.row, delta.range.start.column];
+              if (removedParts.length && delta.text === removedParts.pop()) {
+                continue;
+              }
+              for (text = _ref5 = delta.text.length - 1; _ref5 <= 0 ? text <= 0 : text >= 0; _ref5 <= 0 ? text++ : text--) {
+                stringParts.unshift(delta.text[text]);
+              }
+            }
           } else {
             return {
               string: stringParts.join(''),
@@ -1834,12 +1799,12 @@ Jim.aceInit = function(editor) {
         return jim.onEscape();
       } else if (isCharacterKey(hashId, keyCode)) {
         if (jim.afterInsertSwitch) {
-          if (jim.modeName === 'insert') {
-            undoManager.markUndoPoint(editor.session, 'jim:insert:afterSwitch');
+          if (jim.mode.name === 'insert') {
+            jim.adaptor.markUndoPoint('jim:insert:afterSwitch');
           }
           jim.afterInsertSwitch = false;
         }
-        if (jim.modeName === 'normal' && !jim.adaptor.emptySelection()) {
+        if (jim.mode.name === 'normal' && !jim.adaptor.emptySelection()) {
           jim.setMode('visual');
         }
         if (keyString.length > 1) {
@@ -1860,30 +1825,9 @@ Jim.aceInit = function(editor) {
   editor.session.setUndoManager(undoManager);
   adaptor = new Adaptor(editor);
   jim = new Jim(adaptor);
-  jim.onModeChange = function(prevMode) {
-    var mode, undoPointName, _i, _len, _ref;
-    _ref = ['insert', 'normal', 'visual'];
-    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-      mode = _ref[_i];
-      editor[mode === this.mode.name ? 'setStyle' : 'unsetStyle']("jim-" + mode + "-mode");
-    }
-    editor[this.mode.name === 'visual' && this.mode.linewise ? 'setStyle' : 'unsetStyle']('jim-visual-linewise-mode');
-    undoPointName = null;
-    if (this.mode.name === 'insert') {
-      undoPointName = 'jim:insert:start';
-    } else if ((prevMode != null ? prevMode.name : void 0) === 'insert') {
-      undoPointName = 'jim:insert:end';
-    }
-    if (this.mode.name === 'replace') {
-      undoPointName = 'jim:replace:start';
-    } else if ((prevMode != null ? prevMode.name : void 0) === 'replace') {
-      undoPointName = 'jim:replace:end';
-    }
-    if (undoPointName) {
-      return undoManager.markUndoPoint(editor.session, undoPointName);
-    }
-  };
-  jim.onModeChange();
+  adaptor.onModeChange(null, {
+    name: 'normal'
+  });
   return jim;
 };
   return module.exports || exports;

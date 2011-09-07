@@ -11,6 +11,25 @@ class Adaptor
 
   beyondLineEnd = (editor) -> atLineEnd(editor, true)
 
+  onModeChange: (prevMode, newMode) ->
+    for mode in ['insert', 'normal', 'visual']
+      @editor[if mode is newMode.name then 'setStyle' else 'unsetStyle'] "jim-#{mode}-mode"
+
+    @editor[if newMode.name is 'visual' and newMode.linewise then 'setStyle' else 'unsetStyle'] 'jim-visual-linewise-mode'
+
+    if newMode.name is 'insert'
+      @markUndoPoint 'jim:insert:start'
+    else if prevMode?.name is 'insert'
+      @markUndoPoint 'jim:insert:end'
+
+    if newMode.name is 'replace'
+      @markUndoPoint 'jim:replace:start'
+    else if prevMode?.name is 'replace'
+      @markUndoPoint 'jim:replace:end'
+
+  markUndoPoint: (markName) ->
+    @editor.session.getUndoManager().execute args: [markName, @editor.session]
+
   setOverwriteMode: (active) -> @editor.setOverwrite active
 
   clearSelection: (beginning) ->
@@ -91,20 +110,17 @@ class Adaptor
   navigateFileEnd:   -> @editor.navigateFileEnd()
   navigateLineStart: -> @editor.navigateLineStart()
 
-  findNext: (pattern, wholeWord) ->
-    @editor.$search.set needle: pattern, backwards: false, wholeWord: !!wholeWord
+  search: (backwards, needle, wholeWord) ->
+    @editor.$search.set {backwards, needle, wholeWord}
+
     # move the cursor right so that it won't match what's already under the
     # cursor. move the cursor back afterwards if nothing's found
-    @editor.selection.moveCursorRight()
-    range = @editor.$search.find @editor.session
-    if range
+    @editor.selection.moveCursorRight() unless backwards
+
+    if range = @editor.$search.find @editor.session
       @moveTo range.start.row, range.start.column
-    else
+    else if not backwards
       @editor.selection.moveCursorLeft()
-  findPrevious: (pattern) ->
-    @editor.$search.set needle: pattern, backwards: true
-    range = @editor.$search.find @editor.session
-    @moveTo range.start.row, range.start.column if range
 
   deleteSelection: ->
     yank = @editor.getCopyText()
@@ -182,9 +198,6 @@ class JimUndoManager extends UndoManager
 
   lastOnUndoStack: -> @$undoStack[@$undoStack.length-1]
 
-  markUndoPoint: (doc, markName) ->
-    @execute args: [markName, doc]
-
   silentUndo: ->
     deltas = @$undoStack.pop()
     @$redoStack.push deltas if deltas
@@ -219,23 +232,43 @@ class JimUndoManager extends UndoManager
   lastInsert: ->
     return '' if @lastOnUndoStack() isnt 'jim:insert:end'
 
-    startPosition = null
+    cursorPosInsert = null
+    cursorPosRemove = null
+    action = null
     stringParts = []
-    isContiguousInsert = (delta) ->
-      return false unless delta.action is 'insertText'
-      not startPosition or delta.range.isEnd startPosition...
+    removedParts = []
+    isContiguous = (delta) ->
+      return false unless /(insert|remove)/.test delta.action
+      if not action or action is delta.action
+        if delta.action is 'insertText'
+          not cursorPosInsert or delta.range.isEnd cursorPosInsert...
+        else
+          not cursorPosRemove or delta.range.isStart cursorPosRemove...
+      else
+        if delta.action is 'insertText' and cursorPosInsert?
+          delta.range.end.row is cursorPosInsert[0]
+        else if delta.action is 'removeText' and cursorPosRemove?
+          delta.range.end.row is cursorPosRemove[0]
+        else
+          true
 
     for i in [(@$undoStack.length - 2)..0]
       break if typeof @$undoStack[i] is 'string'
       for j in [(@$undoStack[i].length - 1)..0]
         for k in [(@$undoStack[i][j].deltas.length - 1)..0]
-          item = @$undoStack[i][j]
-          delta = item.deltas[k]
-          if item is 'jim:insert:start' or item is 'jim:insert:afterSwitch'
-            return string: stringParts.join(''), contiguous: true
-          else if isContiguousInsert delta
-            stringParts.unshift delta.text
-            startPosition = [delta.range.start.row, delta.range.start.column]
+          delta = @$undoStack[i][j].deltas[k]
+          if isContiguous(delta)
+            action = delta.action
+            if action is 'removeText'
+              cursorPosRemove = [delta.range.end.row, delta.range.end.column]
+              for text in delta.text.split('')
+                removedParts.push text
+
+            if action is 'insertText'
+              cursorPosInsert = [delta.range.start.row, delta.range.start.column]
+              continue if removedParts.length and delta.text is removedParts.pop()
+              for text in [(delta.text.length - 1)..0]
+                stringParts.unshift delta.text[text]
           else
             return string: stringParts.join(''), contiguous: false
     string: stringParts.join(''), contiguous: true
@@ -262,11 +295,11 @@ Jim.aceInit = (editor) ->
         jim.onEscape()
       else if isCharacterKey hashId, keyCode
         if jim.afterInsertSwitch
-          if jim.modeName is 'insert'
-            undoManager.markUndoPoint editor.session, 'jim:insert:afterSwitch'
+          if jim.mode.name is 'insert'
+            jim.adaptor.markUndoPoint 'jim:insert:afterSwitch'
           jim.afterInsertSwitch = false
 
-        if jim.modeName is 'normal' and not jim.adaptor.emptySelection()
+        if jim.mode.name is 'normal' and not jim.adaptor.emptySelection()
           # if a selection has been made with the mouse since the last
           # keypress in normal mode, switch to visual mode
           jim.setMode 'visual'
@@ -287,26 +320,7 @@ Jim.aceInit = (editor) ->
   adaptor = new Adaptor editor
   jim = new Jim adaptor
 
-  # this is executed before the action is
-  jim.onModeChange = (prevMode) ->
-    for mode in ['insert', 'normal', 'visual']
-      editor[if mode is @mode.name then 'setStyle' else 'unsetStyle'] "jim-#{mode}-mode"
-
-    editor[if @mode.name is 'visual' and @mode.linewise then 'setStyle' else 'unsetStyle'] 'jim-visual-linewise-mode'
-
-    undoPointName = null
-    if @mode.name is 'insert'
-      undoPointName = 'jim:insert:start'
-    else if prevMode?.name is 'insert'
-      undoPointName = 'jim:insert:end'
-
-    if @mode.name is 'replace'
-      undoPointName = 'jim:replace:start'
-    else if prevMode?.name is 'replace'
-      undoPointName = 'jim:replace:end'
-
-    undoManager.markUndoPoint editor.session, undoPointName if undoPointName
-
-  jim.onModeChange()
+  # to initialize the editor class names
+  adaptor.onModeChange null, name: 'normal'
 
   jim
