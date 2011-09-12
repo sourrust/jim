@@ -1,5 +1,5 @@
 /**
- * Jim v0.2.0-pre
+ * Jim v0.2.0
  * https://github.com/misfo/jim
  *
  * Copyright 2011, Trent Ogren
@@ -50,14 +50,6 @@ var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, par
   return child;
 };
 _ref = require('./helpers'), Command = _ref.Command, repeatCountTimes = _ref.repeatCountTimes;
-WORDRegex = function() {
-  return /\S+/g;
-};
-wordRegex = function() {
-  return /(\w+)|([^\w\s]+)/g;
-};
-lastWORDRegex = RegExp("" + (WORDRegex().source) + "\\s*$");
-lastWordRegex = RegExp("(" + (wordRegex().source) + ")\\s*$");
 defaultMappings = {};
 map = function(keys, motionClass) {
   return defaultMappings[keys] = motionClass;
@@ -133,6 +125,12 @@ map('l', MoveRight = (function() {
   });
   return MoveRight;
 })());
+WORDRegex = function() {
+  return /\S+/g;
+};
+wordRegex = function() {
+  return /(\w+)|([^\w\s]+)/g;
+};
 map('e', MoveToWordEnd = (function() {
   __extends(MoveToWordEnd, Motion);
   function MoveToWordEnd() {
@@ -181,7 +179,7 @@ map('w', MoveToNextWord = (function() {
   }
   MoveToNextWord.prototype.exclusive = true;
   MoveToNextWord.prototype.exec = function(jim) {
-    var column, lastMotion, line, nextLineMatch, nextMatch, regex, rightOfCursor, row, thisMatch, timesLeft, _ref2, _ref3, _results;
+    var column, lastMotion, line, match, nextLineMatch, regex, rightOfCursor, row, timesLeft, _ref2, _ref3, _results;
     timesLeft = this.count;
     _results = [];
     while (timesLeft--) {
@@ -189,8 +187,11 @@ map('w', MoveToNextWord = (function() {
       line = jim.adaptor.lineText();
       _ref2 = jim.adaptor.position(), row = _ref2[0], column = _ref2[1];
       rightOfCursor = line.substring(column);
-      thisMatch = regex.exec(rightOfCursor);
-      if (!thisMatch || !(nextMatch = regex.exec(rightOfCursor))) {
+      match = regex.exec(rightOfCursor);
+      if ((match != null ? match.index : void 0) === 0) {
+        match = regex.exec(rightOfCursor);
+      }
+      if (!match) {
         if (timesLeft === 0 && this.operation) {
           column = line.length;
         } else {
@@ -204,10 +205,8 @@ map('w', MoveToNextWord = (function() {
         lastMotion.exec(jim);
         this.exclusive = false;
         return;
-      } else if ((thisMatch != null ? thisMatch.index : void 0) > 0) {
-        column += thisMatch.index;
       } else {
-        column += nextMatch.index;
+        column += match.index;
       }
       _results.push(jim.adaptor.moveTo(row, column));
     }
@@ -223,6 +222,8 @@ map('W', MoveToNextBigWord = (function() {
   MoveToNextBigWord.prototype.bigWord = true;
   return MoveToNextBigWord;
 })());
+lastWORDRegex = RegExp("" + (WORDRegex().source) + "\\s*$");
+lastWordRegex = RegExp("(" + (wordRegex().source) + ")\\s*$");
 map('b', MoveBackWord = (function() {
   __extends(MoveBackWord, Motion);
   function MoveBackWord() {
@@ -407,14 +408,14 @@ map('?', SearchBackwards = (function() {
   return SearchBackwards;
 })());
 map('*', NearestWordSearch = (function() {
-  var wordCursorIsOn;
+  var nearestWord;
   __extends(NearestWordSearch, Search);
   function NearestWordSearch() {
     NearestWordSearch.__super__.constructor.apply(this, arguments);
   }
   NearestWordSearch.prototype.getSearch = function(jim) {
     var charsAhead, searchString, wholeWord, _ref2;
-    _ref2 = wordCursorIsOn(jim.adaptor.lineText(), jim.adaptor.column()), searchString = _ref2[0], charsAhead = _ref2[1];
+    _ref2 = nearestWord(jim), searchString = _ref2[0], charsAhead = _ref2[1];
     if (charsAhead) {
       new MoveRight(charsAhead).exec(jim);
     }
@@ -425,8 +426,10 @@ map('*', NearestWordSearch = (function() {
       backwards: this.backwards
     };
   };
-  wordCursorIsOn = function(line, column) {
-    var charsAhead, leftMatch, leftOfCursor, nextWord, rightMatch, rightOfCursor;
+  nearestWord = function(jim) {
+    var charsAhead, column, leftMatch, leftOfCursor, line, nextWord, rightMatch, rightOfCursor;
+    line = jim.adaptor.lineText();
+    column = jim.adaptor.column();
     leftOfCursor = line.substring(0, column);
     rightOfCursor = line.substring(column);
     charsAhead = null;
@@ -556,7 +559,7 @@ module.exports = {
 
 require['./operators'] = (function() {
   var exports = {}, module = {};
-  var Change, Command, Delete, GoToLine, Indent, MoveToBigWordEnd, MoveToFirstNonBlank, MoveToNextBigWord, MoveToNextWord, MoveToWordEnd, Operation, Outdent, Yank, defaultMappings, map, _ref;
+  var Change, Command, Delete, GoToLine, Indent, MoveToFirstNonBlank, Operation, Outdent, Yank, defaultMappings, map, _ref;
 var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) {
   for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; }
   function ctor() { this.constructor = child; }
@@ -566,10 +569,10 @@ var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, par
   return child;
 };
 Command = require('./helpers').Command;
-_ref = require('./motions'), GoToLine = _ref.GoToLine, MoveToFirstNonBlank = _ref.MoveToFirstNonBlank, MoveToNextBigWord = _ref.MoveToNextBigWord, MoveToNextWord = _ref.MoveToNextWord, MoveToBigWordEnd = _ref.MoveToBigWordEnd, MoveToWordEnd = _ref.MoveToWordEnd;
+_ref = require('./motions'), GoToLine = _ref.GoToLine, MoveToFirstNonBlank = _ref.MoveToFirstNonBlank;
 defaultMappings = {};
-map = function(keys, operatorClass) {
-  return defaultMappings[keys] = operatorClass;
+map = function(keys, operationClass) {
+  return defaultMappings[keys] = operationClass;
 };
 Operation = (function() {
   __extends(Operation, Command);
@@ -586,6 +589,16 @@ Operation = (function() {
     return (_ref2 = this.motion) != null ? _ref2.isComplete() : void 0;
   };
   Operation.prototype.switchToMode = 'normal';
+  Operation.prototype.visualExec = function(jim) {
+    var _ref2;
+    if (this.linewise) {
+      jim.adaptor.makeLinewise();
+    } else if (!((_ref2 = this.motion) != null ? _ref2.exclusive : void 0)) {
+      jim.adaptor.includeCursorInSelection();
+    }
+    this.operate(jim);
+    return jim.setMode(this.switchToMode);
+  };
   Operation.prototype.exec = function(jim) {
     var _ref2;
     this.startingPosition = jim.adaptor.position();
@@ -600,25 +613,6 @@ Operation = (function() {
     this.motion.exec(jim);
     return this.visualExec(jim);
   };
-  Operation.prototype.visualExec = function(jim) {
-    var _ref2;
-    if (this.linewise) {
-      jim.adaptor.makeLinewise();
-    } else if (!((_ref2 = this.motion) != null ? _ref2.exclusive : void 0)) {
-      jim.adaptor.includeCursorInSelection();
-    }
-    this.operate(jim);
-    if (this.repeatableInsert) {
-      return jim.adaptor.insert(this.repeatableInsert.string);
-    } else {
-      if (this.switchToMode === 'insert') {
-        jim.afterInsertSwitch = true;
-      }
-      if (this.switchToMode) {
-        return jim.setMode(this.switchToMode);
-      }
-    }
-  };
   return Operation;
 })();
 map('c', Change = (function() {
@@ -626,6 +620,15 @@ map('c', Change = (function() {
   function Change() {
     Change.__super__.constructor.apply(this, arguments);
   }
+  Change.prototype.visualExec = function(jim) {
+    Change.__super__.visualExec.apply(this, arguments);
+    if (this.repeatableInsert) {
+      jim.adaptor.insert(this.repeatableInsert.string);
+      return jim.setMode('normal');
+    } else {
+      return jim.afterInsertSwitch = true;
+    }
+  };
   Change.prototype.operate = function(jim) {
     var _ref2;
     if (this.linewise) {
@@ -700,7 +703,7 @@ module.exports = {
 
 require['./commands'] = (function() {
   var exports = {}, module = {};
-  var Backspace, Change, ChangeChar, ChangeToEndOfLine, Command, Delete, DeleteChar, DeleteToEndOfLine, GoToLine, Insert, InsertAfter, InsertAtEndOfLine, InsertBeforeFirstNonBlank, JoinLines, JoinLinesNormalizingWhitespace, ModeSwitch, MoveDown, MoveLeft, MoveRight, MoveToEndOfLine, MoveToFirstNonBlank, OpenLine, OpenLineAbove, Paste, PasteBefore, RepeatCommand, ReplaceChar, ReplaceSwitch, Undo, VisualLinewiseSwitch, VisualSwitch, defaultMappings, map, repeatCountTimes, _ref, _ref2, _ref3;
+  var Backspace, ChangeChar, ChangeToEndOfLine, Command, Delete, DeleteChar, DeleteToEndOfLine, Insert, InsertAfter, InsertAtEndOfLine, InsertBeforeFirstNonBlank, JoinLines, JoinLinesNormalizingWhitespace, ModeSwitch, MoveLeft, MoveRight, MoveToEndOfLine, MoveToFirstNonBlank, OpenLine, OpenLineAbove, Paste, PasteBefore, RepeatCommand, ReplaceChar, ReplaceSwitch, Undo, VisualLinewiseSwitch, VisualSwitch, defaultMappings, map, repeatCountTimes, _ref, _ref2;
 var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, parent) {
   for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; }
   function ctor() { this.constructor = child; }
@@ -710,8 +713,8 @@ var __hasProp = Object.prototype.hasOwnProperty, __extends = function(child, par
   return child;
 };
 _ref = require('./helpers'), Command = _ref.Command, repeatCountTimes = _ref.repeatCountTimes;
-_ref2 = require('./operators'), Change = _ref2.Change, Delete = _ref2.Delete;
-_ref3 = require('./motions'), GoToLine = _ref3.GoToLine, MoveDown = _ref3.MoveDown, MoveLeft = _ref3.MoveLeft, MoveRight = _ref3.MoveRight, MoveToEndOfLine = _ref3.MoveToEndOfLine, MoveToFirstNonBlank = _ref3.MoveToFirstNonBlank;
+Delete = require('./operators').Delete;
+_ref2 = require('./motions'), MoveLeft = _ref2.MoveLeft, MoveRight = _ref2.MoveRight, MoveToEndOfLine = _ref2.MoveToEndOfLine, MoveToFirstNonBlank = _ref2.MoveToFirstNonBlank;
 defaultMappings = {};
 map = function(keys, commandClass) {
   return defaultMappings[keys] = commandClass;
@@ -744,12 +747,12 @@ map('v', VisualSwitch = (function() {
     });
   };
   VisualSwitch.prototype.visualExec = function(jim) {
-    var _ref4;
+    var _ref3;
     if (jim.mode.linewise) {
       jim.setMode('visual', {
         linewise: false
       });
-      return (_ref4 = jim.adaptor.editor.selection).setSelectionAnchor.apply(_ref4, jim.mode.anchor);
+      return (_ref3 = jim.adaptor.editor.selection).setSelectionAnchor.apply(_ref3, jim.mode.anchor);
     } else {
       return jim.onEscape();
     }
@@ -906,8 +909,8 @@ map('gJ', JoinLines = (function() {
     return _results;
   };
   JoinLines.prototype.visualExec = function(jim) {
-    var maxRow, minRow, _ref4;
-    _ref4 = jim.adaptor.selectionRowRange(), minRow = _ref4[0], maxRow = _ref4[1];
+    var maxRow, minRow, _ref3;
+    _ref3 = jim.adaptor.selectionRowRange(), minRow = _ref3[0], maxRow = _ref3[1];
     jim.adaptor.clearSelection();
     jim.adaptor.moveTo(minRow, 0);
     this.count = maxRow - minRow + 1;
@@ -940,7 +943,7 @@ map('p', Paste = (function() {
     Paste.__super__.constructor.apply(this, arguments);
   }
   Paste.prototype.exec = function(jim) {
-    var beforeLineEnding, column, lastRow, lineEnding, linewiseRegister, registerValue, row, text, wholeString, _ref4;
+    var beforeLineEnding, column, lastRow, lineEnding, linewiseRegister, registerValue, row, text, wholeString, _ref3;
     if (!(registerValue = jim.registers['"'])) {
       return;
     }
@@ -950,7 +953,7 @@ map('p', Paste = (function() {
       row = jim.adaptor.row() + (this.before ? 0 : 1);
       lastRow = jim.adaptor.lastRow();
       if (row > lastRow) {
-        _ref4 = /^([\s\S]*)(\r?\n)$/.exec(text), wholeString = _ref4[0], beforeLineEnding = _ref4[1], lineEnding = _ref4[2];
+        _ref3 = /^([\s\S]*)(\r?\n)$/.exec(text), wholeString = _ref3[0], beforeLineEnding = _ref3[1], lineEnding = _ref3[2];
         text = lineEnding + beforeLineEnding;
         column = jim.adaptor.lineText(lastRow).length - 1;
         jim.adaptor.moveTo(row, column);
@@ -1215,8 +1218,7 @@ module.exports = Keymap;
 
 require['./modes'] = (function() {
   var exports = {}, module = {};
-  var MoveDown, MoveLeft, invalidCommand, _ref;
-_ref = require('./motions'), MoveLeft = _ref.MoveLeft, MoveDown = _ref.MoveDown;
+  var invalidCommand;
 invalidCommand = function(type) {
   if (type == null) {
     type = 'command';
@@ -1226,7 +1228,7 @@ invalidCommand = function(type) {
 };
 exports.normal = {
   onKeypress: function(keys) {
-    var command, motion, regex, _ref2, _ref3;
+    var command, motion, regex, _ref, _ref2;
     this.commandPart = (this.commandPart || '') + keys;
     if (!this.command) {
       command = this.keymap.commandFor(this.commandPart);
@@ -1247,7 +1249,7 @@ exports.normal = {
       }
       this.commandPart = '';
     } else if (this.command.isOperation) {
-      if (regex = (_ref2 = this.command.motion) != null ? _ref2.constructor.followedBy : void 0) {
+      if (regex = (_ref = this.command.motion) != null ? _ref.constructor.followedBy : void 0) {
         if (regex.test(this.commandPart)) {
           this.command.motion.followedBy = this.commandPart;
         } else {
@@ -1265,7 +1267,7 @@ exports.normal = {
         }
       }
     }
-    if ((_ref3 = this.command) != null ? _ref3.isComplete() : void 0) {
+    if ((_ref2 = this.command) != null ? _ref2.isComplete() : void 0) {
       this.command.exec(this);
       if (this.command.isRepeatable) {
         this.lastCommand = this.command;
@@ -1276,7 +1278,7 @@ exports.normal = {
 };
 exports.visual = {
   onKeypress: function(newKeys) {
-    var command, maxRow, minRow, wasBackwards, _ref2, _ref3, _ref4;
+    var command, maxRow, minRow, wasBackwards, _ref, _ref2, _ref3;
     this.commandPart = (this.commandPart || '') + newKeys;
     if (!this.command) {
       command = this.keymap.visualCommandFor(this.commandPart);
@@ -1295,9 +1297,9 @@ exports.visual = {
       this.commandPart = '';
     }
     wasBackwards = this.adaptor.isSelectionBackwards();
-    if (((_ref2 = this.command) != null ? _ref2.isOperation : void 0) || ((_ref3 = this.command) != null ? _ref3.isComplete() : void 0)) {
+    if (((_ref = this.command) != null ? _ref.isOperation : void 0) || ((_ref2 = this.command) != null ? _ref2.isComplete() : void 0)) {
       if (this.command.isRepeatable) {
-        this.command.selectionSize = this.mode.name === 'visual' && this.mode.linewise ? ((_ref4 = this.adaptor.selectionRowRange(), minRow = _ref4[0], maxRow = _ref4[1], _ref4), {
+        this.command.selectionSize = this.mode.name === 'visual' && this.mode.linewise ? ((_ref3 = this.adaptor.selectionRowRange(), minRow = _ref3[0], maxRow = _ref3[1], _ref3), {
           lines: (maxRow - minRow) + 1
         }) : this.adaptor.characterwiseSelectionSize();
         this.command.linewise = this.mode.linewise;
@@ -1334,12 +1336,11 @@ exports.replace = {
 
 require['./jim'] = (function() {
   var exports = {}, module = {};
-  var GoToLine, Jim, Keymap;
+  var Jim, Keymap;
 var __hasProp = Object.prototype.hasOwnProperty;
 Keymap = require('./keymap');
-GoToLine = require('./motions').GoToLine;
 Jim = (function() {
-  Jim.VERSION = '0.2.0-pre';
+  Jim.VERSION = '0.2.0';
   function Jim(adaptor) {
     this.adaptor = adaptor;
     this.command = null;
@@ -1485,14 +1486,9 @@ Adaptor = (function() {
     return this.editor.renderer.getFirstFullyVisibleRow();
   };
   Adaptor.prototype.lastFullyVisibleRow = function() {
-    var lastVisibleRow, totalLines;
-    totalLines = this.editor.selection.doc.$lines.length;
+    var lastVisibleRow;
     lastVisibleRow = this.editor.renderer.getLastFullyVisibleRow();
-    if (totalLines < lastVisibleRow) {
-      return totalLines;
-    } else {
-      return lastVisibleRow;
-    }
+    return Math.min(this.lastRow(), lastVisibleRow);
   };
   Adaptor.prototype.includeCursorInSelection = function() {
     if (!this.editor.selection.isBackwards()) {

@@ -1,10 +1,14 @@
-# This is a pretty standard key-to-command Keymap except for a few details:
-# * It has some built-in [VJ]im-specific smarts about the concepts of motions and operators
-#   and if/how they should be available in each mode
+# This is a pretty standard key-to-command keymap except for a few details:
+#
+# * It has some built-in Vim-like smarts about the concepts of motions and
+#   operators and if/how they should be available in each mode
 # * It differentiates between invalid commands (`gz`) and partial commands (`g`)
 class Keymap
 
-  # build an instance of Keymap with all the default keymappings
+  # Building a Keymap
+  # -----------------
+
+  # Build an instance of `Keymap` with all the default keymappings.
   @getDefault: ->
     keymap = new Keymap
     keymap.mapCommand keys, commandClass for own keys, commandClass of require('./commands').defaultMappings
@@ -17,13 +21,17 @@ class Keymap
     @motions = {}
     @visualCommands = {}
 
-    # use objects to de-dup
+    # Use some objects to de-duplicate repeated partial commands.
     @partialCommands = {}
     @partialMotions = {}
     @partialVisualCommands = {}
 
+
+  # Mapping commands
+  # ----------------
+
   # Map the `comandClass` to the `keys` sequence.  Map it as a visual command as well
-  # if the class has a ::visualExec method
+  # if the class has a `::visualExec`.
   mapCommand: (keys, commandClass) ->
     if commandClass::exec
       @commands[keys] = commandClass
@@ -34,7 +42,7 @@ class Keymap
       if keys.length is 2
         @partialVisualCommands[keys[0]] = true
 
-  # Map `motionClass` to the `keys` sequence
+  # Map `motionClass` to the `keys` sequence.
   mapMotion: (keys, motionClass) ->
     @commands[keys] = motionClass
     @motions[keys] = motionClass
@@ -44,7 +52,7 @@ class Keymap
       @partialCommands[keys[0]] = true
       @partialVisualCommands[keys[0]] = true
 
-  # Map `operatorClass` to the `keys` sequence
+  # Map `operatorClass` to the `keys` sequence.
   mapOperator: (keys, operatorClass) ->
     @commands[keys] = operatorClass
     @visualCommands[keys] = operatorClass
@@ -52,28 +60,46 @@ class Keymap
       @partialCommands[keys[0]] = true
       @partialVisualCommands[keys[0]] = true
 
-  # Build a regex that will match any key sequence, splitting the preceding count captured
-  # into the first capture group, the command/motion/operator into second, and will capture
-  # text in the third only if we're not matching a *partial* command/motion/operator
+
+  # Finding commands in the Keymap
+  # ------------------------------
+  #
+  # `commandFor`, `motionFor`, and `visualCommandFor` are defined for finding
+  # their respective `Command` types.  Each of these methods will return one of the
+  # following:
+  #
+  # * `true` if the `commandPart` passed in is a valid *partial* command.  For
+  #   example, `Keymap.getDefault().commandFor('g')` will return `true` because
+  #   it is the first part of what could be the valid command `gg`, among
+  #   others.
+  # * `false` if the `commandPart` is not a valid partial *or* complete command.
+  # * A `Command` if the `commandPart` is a valid, complete command.  The
+  #   `Command` will have it's `count` populated if `commandPart` includes a
+  #   count.
+
+  # Build a regex that will help us split up the `commandPart` in each of the
+  # following methods.  The regex will match any key sequence, splitting it into
+  # the following captured groups:
+  #
+  # 1. The preceding count
+  # 2. The command/motion/operator
+  # 3. Any chars beyond a *partial* command/motion/operator. If this group
+  #    captures *anything*, we can stop accepting keystrokes for the command and
+  #    execute it if it's valid.
   buildPartialCommandRegex = (partialCommands) ->
     ///
       ^
       ([1-9]\d*)?
       (
         [#{(char for own char, nothing of partialCommands).join ''}]?
-        # if the group below captures something, we know the outer group is
-        # is more than just a partial command (could be invalid, though)
         ([\s\S]*)
       )?
       $
     ///
 
 
-  # returns:
-  # * a `Command` with a count if `commandPart` is a complete command:
-  #     commandFor('12gg') # returns GoToLine with a count of 12
-  # * true if `commandPart` is a valid partial command
-  # * false if `commandPart` is invalid
+  # Find a normal mode command, which could be a motion, an operator, or a
+  # "regular" normal mode command.
   commandFor: (commandPart) ->
     @partialCommandRegex or= buildPartialCommandRegex @partialCommands
     [commandPart, count, command, beyondPartial] = commandPart.match @partialCommandRegex
@@ -84,36 +110,29 @@ class Keymap
       else
         false
     else
-      # it's a partial command
       true
 
-  # returns:
-  # * a `Motion` with a count if `motionPart` is a complete motion:
-  #     motionFor('3j') # returns MoveDown with a count of 3
-  # * true if `motionPart` is a valid partial motion
-  # * false if `motionPart` is invalid
+  # Find a motion.
   motionFor: (commandPart, operatorPending) ->
     @partialMotionRegex or= buildPartialCommandRegex @partialMotions
     [commandPart, count, motion, beyondPartial] = commandPart.match @partialCommandRegex
 
     if beyondPartial
       if motion is operatorPending
-        # e.g `cc`, `yy`
+
+        # If we're finding `cc`, `yy`, etc, we return a "fake" linewise command.
         {LinewiseCommandMotion} = require './motions'
         new LinewiseCommandMotion(parseInt(count) or null)
+
       else if motionClass = @motions[motion]
         new motionClass(parseInt(count) or null)
       else
         false
     else
-      # it's a partial command
       true
 
-  # returns:
-  # * a `Command` with a count if `commandPart` is a complete visual command:
-  #     visualCommandFor('c') # returns Change with a count of `null`
-  # * true if `commandPart` is a valid partial visual command
-  # * false if `commandPart` is invalid
+  # Find a visual mode command, which could be a motion, an operator, or a
+  # "regular" visual mode command.
   visualCommandFor: (commandPart) ->
     @partialVisualCommandRegex or= buildPartialCommandRegex @partialVisualCommands
     [commandPart, count, command, beyondPartial] = commandPart.match @partialVisualCommandRegex
@@ -124,7 +143,9 @@ class Keymap
       else
         false
     else
-      # it's a partial command
       true
 
+
+# Exports
+# -------
 module.exports = Keymap
