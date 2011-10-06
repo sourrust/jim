@@ -6,11 +6,10 @@
 {Command, repeatCountTimes} = require './helpers'
 {Delete} = require './operators'
 {MoveLeft, MoveRight, MoveToEndOfLine, MoveToFirstNonBlank} = require './motions'
+Jim = require './jim'
 
 # The default key mappings are specified alongside the definitions of each command.
-# Accumulate the mappings so they can be exported.
-defaultMappings = {}
-map = (keys, commandClass) -> defaultMappings[keys] = commandClass
+map = (keys, commandClass) -> Jim.keymap.mapCommand keys, commandClass
 
 # Define a convenience class for commands that switch to another mode.
 class ModeSwitch extends Command
@@ -23,7 +22,7 @@ class ModeSwitch extends Command
 # --------------------
 
 # Switch to characterwise visual mode.
-map 'v', class VisualSwitch extends Command
+map ['v'], class VisualSwitch extends Command
   isRepeatable: no
   exec: (jim) ->
     anchor = jim.adaptor.position()
@@ -37,7 +36,7 @@ map 'v', class VisualSwitch extends Command
       jim.onEscape()
 
 # Switch to linewise visual mode.
-map 'V', class VisualLinewiseSwitch extends Command
+map ['V'], class VisualLinewiseSwitch extends Command
   isRepeatable: no
   exec: (jim) ->
     anchor = jim.adaptor.setLinewiseSelectionAnchor()
@@ -56,7 +55,7 @@ map 'V', class VisualLinewiseSwitch extends Command
 # --------------------
 
 # Insert before the char under the cursor.
-map 'i', class Insert extends ModeSwitch
+map ['i'], class Insert extends ModeSwitch
   switchToMode: 'insert'
   exec: (jim) ->
     @beforeSwitch? jim
@@ -76,44 +75,61 @@ map 'i', class Insert extends ModeSwitch
       jim.setMode @switchToMode
 
 # Insert after the char under the cursor.
-map 'a', class InsertAfter extends Insert
+map ['a'], class InsertAfter extends Insert
   beforeSwitch: (jim) -> jim.adaptor.moveRight true
 
 # Insert at the end of the line.
-map 'A', class InsertAtEndOfLine extends Insert
+map ['A'], class InsertAtEndOfLine extends Insert
   beforeSwitch: (jim) ->
     new MoveToEndOfLine().exec jim
     jim.adaptor.moveRight true
 
 # Delete all remaining text on the line and insert in its place.
-map 'C', class ChangeToEndOfLine extends Insert
+map ['C'], class ChangeToEndOfLine extends Insert
   beforeSwitch: (jim) ->
     new DeleteToEndOfLine(@count).exec jim
 
 # Insert before to first non-blank char of the line.
-map 'I', class InsertBeforeFirstNonBlank extends Insert
+map ['I'], class InsertBeforeFirstNonBlank extends Insert
   beforeSwitch: (jim) -> new MoveToFirstNonBlank().exec jim
 
 # Create a new line below the cursor and insert there.
-map 'o', class OpenLine extends Insert
+#
+# Move the cursor to other end of selected text. (visual mode)
+map ['o'], class OpenLine extends Insert
   beforeSwitch: (jim) ->
     row = jim.adaptor.row() + (if @above then 0 else 1)
     jim.adaptor.insertNewLine row
     jim.adaptor.moveTo row, 0
+  visualExec: (jim) ->
+    selection = jim.adaptor.editor.selection
+    {row:rowL, column:columnL} = selection.getSelectionLead()
+    {row:rowA, column:columnA} = selection.getSelectionAnchor()
+    if not jim.mode.linewise
+      if rowL < rowA or (rowL == rowA and columnL < columnA)
+        columnA -= 1
+        columnL += 1
+      selection.setSelectionAnchor(rowL, columnL)
+    else
+      [rowA, columnA] = jim.mode.anchor if isNaN columnA
+      selection.selectionAnchor.column = columnL
+      selection.selectionAnchor.row    = rowL
+      jim.mode.anchor = jim.adaptor.setLinewiseSelectionAnchor()
+    jim.adaptor.moveTo(rowA, columnA)
 
 # Create a new line above the cursor and insert there.
-map 'O', class OpenLineAbove extends OpenLine
+map ['O'], class OpenLineAbove extends OpenLine
   above: yes
 
 # Replace the char under the cursor with an insert.
-map 's', class ChangeChar extends Insert
+map ['s'], class ChangeChar extends Insert
   beforeSwitch: (jim) -> new DeleteChar(@count).exec jim
 
 
 # Replace mode switch
 # -------------------
 
-map 'R', class ReplaceSwitch extends ModeSwitch
+map ['R'], class ReplaceSwitch extends ModeSwitch
   beforeSwitch: (jim) -> jim.adaptor.setOverwriteMode on
   switchToMode: 'replace'
 
@@ -122,7 +138,7 @@ map 'R', class ReplaceSwitch extends ModeSwitch
 # ----------------------
 
 # Join a line with the line following it.
-map 'gJ', class JoinLines extends Command
+map ['g', 'J'], class JoinLines extends Command
   exec: (jim) ->
     timesLeft = Math.max(@count, 2) - 1
     while timesLeft--
@@ -142,15 +158,15 @@ map 'gJ', class JoinLines extends Command
 
 # Join a line with the line following it, ensuring that one space separates the
 # content from the lines.
-map 'J', class JoinLinesNormalizingWhitespace extends JoinLines
+map ['J'], class JoinLinesNormalizingWhitespace extends JoinLines
   normalize: yes
 
 # Delete all remaining text on the line.
-map 'D', class DeleteToEndOfLine extends Command
+map ['D'], class DeleteToEndOfLine extends Command
   exec: (jim) -> new Delete(1, new MoveToEndOfLine @count).exec jim
 
 # Paste after the cursor. Paste after the line if pasting linewise register.
-map 'p', class Paste extends Command
+map ['p'], class Paste extends Command
   exec: (jim) ->
     return if not registerValue = jim.registers['"']
 
@@ -191,11 +207,11 @@ map 'p', class Paste extends Command
     jim.setMode 'normal'
 
 # Paste before the cursor. Paste before the line if pasting linewise register.
-map 'P', class PasteBefore extends Paste
+map ['P'], class PasteBefore extends Paste
   before: yes
 
 # Replace the char under the cursor with the char pressed after `r`.
-map 'r', class ReplaceChar extends Command
+map ['r'], class ReplaceChar extends Command
   # Match `[\s\S]` so that it will match `\n` (windows' `\r\n`?)
   @followedBy: /[\s\S]+/
   exec: (jim) ->
@@ -211,7 +227,7 @@ map 'r', class ReplaceChar extends Command
 
 
 # Repeat the last repeatable command.
-map '.', class RepeatCommand extends Command
+map ['.'], class RepeatCommand extends Command
   isRepeatable: no
   exec: (jim) ->
     command = jim.lastCommand
@@ -249,17 +265,17 @@ map '.', class RepeatCommand extends Command
       command.exec jim
 
 # Undo the last command that modified the document.
-map 'u', class Undo extends Command
+map ['u'], class Undo extends Command
   isRepeatable: no
   exec: repeatCountTimes (jim) -> jim.adaptor.undo()
 
 # Delete the char under the cursor.
-map 'x', class DeleteChar extends Command
+map ['x'], class DeleteChar extends Command
   exec: (jim) -> new Delete(1, new MoveRight @count).exec jim
   visualExec: (jim) -> Delete::visualExec jim
 
 # Delete the char before the cursor.
-map 'X', class Backspace extends Command
+map ['X'], class Backspace extends Command
   exec: (jim) -> new Delete(1, new MoveLeft @count).exec jim
   visualExec: (jim) ->
     del = new Delete(@count)
@@ -269,12 +285,12 @@ map 'X', class Backspace extends Command
 
 # Move left in normal mode
 # Delete selections in visual mode
-map 'backspace', class extends MoveLeft
+map ['backspace'], class extends MoveLeft
   prevLine: yes
   visualExec: (jim) -> Delete::visualExec jim
 
-map 'delete', DeleteChar
+map ['delete'], DeleteChar
 
 # Exports
 # -------
-module.exports = {defaultMappings}
+module.exports = {}

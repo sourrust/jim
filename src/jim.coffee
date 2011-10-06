@@ -4,16 +4,18 @@
 # `Command`s are passed an instance of `Jim` when they are executed which allows
 # them to change Jim's state and manipulate the editor (through the `@adaptor`).
 
-Keymap = require './keymap'
+{InputState} = require './helpers'
+Keymap       = require './keymap'
 
 class Jim
   @VERSION: '0.2.1-pre'
 
+  @keymap: new Keymap
+
   constructor: (@adaptor) ->
-    @command = null
     @registers = {}
-    @keymap = Keymap.getDefault()
     @setMode 'normal'
+    @inputState = new InputState
 
   modes: require './modes'
 
@@ -46,8 +48,7 @@ class Jim
   # Pressing escape blows away all the state.
   onEscape: ->
     @setMode 'normal'
-    @command = null
-    @commandPart = '' # just in case...
+    @inputState.clear()
     @adaptor.clearSelection()
 
   # When a key is pressed, let the current mode figure out what to do about it.

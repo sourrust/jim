@@ -4,11 +4,11 @@
 
 {Command} = require './helpers'
 {GoToLine, MoveToFirstNonBlank} = require './motions'
+Jim = require './jim'
 
 # The default key mappings are specified alongside the definitions of each
-# `Operation`.  Accumulate the mappings so they can be exported.
-defaultMappings = {}
-map = (keys, operationClass) -> defaultMappings[keys] = operationClass
+# `Operation`.
+map = (keys, operationClass) -> Jim.keymap.mapOperator keys, operationClass
 
 # Define the base class for all operations.
 class Operation extends Command
@@ -44,7 +44,7 @@ class Operation extends Command
 
 # Change the selected text or the text that `@motion` moves over (i.e. delete
 # the text and switch to insert mode).
-map 'c', class Change extends Operation
+map ['c'], class Change extends Operation
   visualExec: (jim) ->
     super
 
@@ -70,29 +70,29 @@ map 'c', class Change extends Operation
   switchToMode: 'insert'
 
 # Delete the selection or the text that `@motion` moves over.
-map 'd', class Delete extends Operation
+map ['d'], class Delete extends Operation
   operate: (jim) ->
     jim.deleteSelection @motion?.exclusive, @linewise
     new MoveToFirstNonBlank().exec jim if @linewise
 
 # Yank into a register the selection or the text that `@motion` moves over.
-map 'y', class Yank extends Operation
+map ['y'], class Yank extends Operation
   operate: (jim) ->
     jim.yankSelection @motion?.exclusive, @linewise
     jim.adaptor.moveTo @startingPosition... if @startingPosition
 
 # Indent the lines in the selection or the text that `@motion` moves over.
-map '>', class Indent extends Operation
+map ['>'], class Indent extends Operation
   operate: (jim) ->
     [minRow, maxRow] = jim.adaptor.selectionRowRange()
     jim.adaptor.indentSelection()
     new GoToLine(minRow + 1).exec jim
 
 # Outdent the lines in the selection or the text that `@motion` moves over.
-map '<', class Outdent extends Operation
+map ['<'], class Outdent extends Operation
   operate: (jim) ->
     [minRow, maxRow] = jim.adaptor.selectionRowRange()
     jim.adaptor.outdentSelection()
     new GoToLine(minRow + 1).exec jim
 
-module.exports = {Change, Delete, defaultMappings}
+module.exports = {Change, Delete}
